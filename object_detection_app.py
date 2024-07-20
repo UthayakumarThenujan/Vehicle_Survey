@@ -55,6 +55,29 @@ def imageTest():
     plt.title("Predicted Bounding Boxes with Class Names")
     plt.show()
 
+def resize_frame(frame, max_width=800, max_height=600):
+    height, width = frame.shape[:2]
+    aspect_ratio = width / height
+    
+    if width > max_width or height > max_height:
+        if width > height:
+            new_width = max_width
+            new_height = int(max_width / aspect_ratio)
+        else:
+            new_height = max_height
+            new_width = int(max_height * aspect_ratio)
+        resized_frame = cv2.resize(frame, (new_width, new_height))
+    else:
+        resized_frame = frame
+
+    return resized_frame
+
+
+def resize_video(frame, max_width=800, max_height=600):
+    or_height, or_width = frame.shape[:2]
+    frame_heigth , frame_width = 300 , 300
+
+    return or_height/frame_heigth, or_width/frame_width
 
 def video_monitoring():
     # Initialize variables for object counting
@@ -62,7 +85,7 @@ def video_monitoring():
     object_count = {cls: 0 for cls in classes}
 
     # Open a video file
-    video_path = "videoplayback.mp4"  # Replace with your video path
+    video_path = "4K Road traffic.mp4"  # Replace with your video path
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
@@ -70,7 +93,7 @@ def video_monitoring():
         return
 
     frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
-    target_frame_count=frame_rate
+    # frame_rate=1
     current_frame = 0
     last_frame = None
 
@@ -105,7 +128,7 @@ def video_monitoring():
 
             processed_prediction = preprocess_bbox(prediction)
 
-
+            # print(processed_prediction)
             # Extract boxes, scores, and labels from prediction
             boxes = processed_prediction['boxes'].cpu().numpy()
             scores = processed_prediction['scores'].cpu().numpy()
@@ -114,23 +137,185 @@ def video_monitoring():
             # Calculate center of each box and compare with fixed y-axis point
 
             for box, score, label in zip(boxes, scores, labels):
-                # Calculate box center
-                box_center_y = ((box[3] - box[1]) / 2) + box[1]
-                box_center_y = round(box_center_y, 1)
                 # Compare box center with fixed y-axis point
 
-                iou = calculate_iou(box, [50, 50 ,250, 150])
-                if iou>0.5:  # Adjust threshold as needed
+                iou = calculate_iou(box, boundarBox)
+                if(label==1 or label==3):
+                     iou_thresh=0.5
+                else:
+                     iou_thresh=0.2
+
+                if iou>iou_thresh:  # Adjust threshold as needed
                     class_name = classes[label]
                     object_count[class_name] += 1
-            # fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-            # show_bbox(input_image[0], processed_prediction, ax)
-            # plt.title("Predicted Bounding Boxes with Class Names")
-            # plt.show()
+                    # fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+                    # show_bbox(input_image[0], processed_prediction, ax)
+                    # plt.title("Predicted Bounding Boxes with Class Names")
+                    # plt.show()
+                    # Draw bounding boxes and labels on the frame
+                    # Draw bounding boxes and labels on the frame
+                            # Resize frame to fit display if needed
+                            
+                ratio_heigth, ratio_width= resize_video(last_frame)
+
+
+                # Scale bounding boxes to the original frame size
+                scaled_boxes = []
+                for box in boxes:
+                    x1, y1, x2, y2 = box
+                    scaled_box = [
+                        int(x1*ratio_width),
+                        int(y1*ratio_heigth),
+                        int(x2*ratio_width),
+                        int(y2*ratio_heigth)
+                    ]
+                    scaled_boxes.append(scaled_box)
+
+                scaled_boxes = np.array(scaled_boxes)
+
+                # Update the processed prediction with scaled boxes
+                processed_prediction['boxes'] = torch.tensor(scaled_boxes, dtype=torch.float32)
+
+            video_fram = preprocess_video(last_frame)
+            annotated_frame = show_bbox(video_fram[0], processed_prediction,ratio_heigth, ratio_width)
+
+                    # Resize the frame to fixed dimensions
+            resized_frame = resize_frame(annotated_frame)
+                # Prepare the count text
+            count_text = "\n".join([f"{cls}: {count}" for cls, count in list(object_count.items())[1:]])
+            y0, dy = 12, 15  # Starting y position and line height
+
+                # Calculate text size
+            text_size, _ = cv2.getTextSize(count_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            text_width, text_height = text_size
+            box_height = (dy * len(count_text.split('\n'))) + 1  # Add padding
+
+                # Draw a black background rectangle
+            cv2.rectangle(resized_frame, (2, y0 - 20), (130, y0 + box_height), (0, 0, 0), cv2.FILLED)
+
+                # Draw the text
+            for i, line in enumerate(count_text.split('\n')):
+                    cv2.putText(resized_frame, line, (10, y0 + i * dy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.imshow('Video Monitoring', resized_frame)
+
+                    # Exit the video display window when 'q' is pressed
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
 
     # Release video capture and close windows
     cap.release()
+    cv2.destroyAllWindows()
     print("Monitoring Finished......")
+    
+    # Print the final object counts
+    print("Object Counts:")
+    for cls, count in object_count.items():
+        print(f"{cls}: {count}")
+
+
+def realtime_camera_video():
+    # Initialize variables for object counting
+    print("Monitoring Initializing......")
+    object_count = {cls: 0 for cls in classes}
+    processed_prediction = {'boxes': torch.tensor([]), 'scores': torch.tensor([]), 'labels': torch.tensor([])}
+
+    # Open a video capture (0 for default webcam)
+    cap = cv2.VideoCapture(0)
+
+    if not cap.isOpened():
+        print("Error: Unable to open camera.")
+        return
+
+    last_frame = None
+
+    # Process the video
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        last_frame = frame
+
+        # Preprocess the last frame
+        input_image = preprocess_frame(last_frame)
+
+        # Perform object detection
+        with torch.no_grad():
+            prediction = model(input_image)[0]
+
+        processed_prediction = preprocess_bbox(prediction)
+
+        # Extract boxes, scores, and labels from prediction
+        boxes = processed_prediction['boxes'].cpu().numpy()
+        scores = processed_prediction['scores'].cpu().numpy()
+        labels = processed_prediction['labels'].cpu().numpy()
+
+        # Calculate center of each box and compare with fixed y-axis point
+        for box, score, label in zip(boxes, scores, labels):
+            iou = calculate_iou(box, boundarBox)
+            if label == 1 or label == 3:
+                iou_thresh = 0.5
+            else:
+                iou_thresh = 0.2
+
+            if iou > iou_thresh:  # Adjust threshold as needed
+                class_name = classes[label]
+                object_count[class_name] += 1
+
+        # Resize frame to fit display if needed
+        ratio_height, ratio_width = resize_video(last_frame)
+
+        # Scale bounding boxes to the original frame size
+        scaled_boxes = []
+        for box in boxes:
+            x1, y1, x2, y2 = box
+            scaled_box = [
+                int(x1 * ratio_width),
+                int(y1 * ratio_height),
+                int(x2 * ratio_width),
+                int(y2 * ratio_height)
+            ]
+            scaled_boxes.append(scaled_box)
+
+        scaled_boxes = np.array(scaled_boxes)
+
+        # Update the processed prediction with scaled boxes
+        processed_prediction['boxes'] = torch.tensor(scaled_boxes, dtype=torch.float32)
+
+        video_frame = preprocess_video(last_frame)
+        annotated_frame = show_bbox(video_frame[0], processed_prediction, ratio_height, ratio_width)
+
+        # Resize the frame to fixed dimensions
+        resized_frame = resize_frame(annotated_frame)
+
+        # Prepare the count text
+        count_text = "\n".join([f"{cls}: {count}" for cls, count in list(object_count.items())[1:]])
+        y0, dy = 12, 15  # Starting y position and line height
+
+        # Calculate text size
+        text_size, _ = cv2.getTextSize(count_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        text_width, text_height = text_size
+        box_height = (dy * len(count_text.split('\n'))) + 1  # Add padding
+
+        # Draw a black background rectangle
+        cv2.rectangle(resized_frame, (2, y0 - 20), (130, y0 + box_height), (0, 0, 0), cv2.FILLED)
+
+        # Draw the text
+        for i, line in enumerate(count_text.split('\n')):
+            cv2.putText(resized_frame, line, (10, y0 + i * dy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+        cv2.imshow('Video Monitoring', resized_frame)
+
+        # Sleep for 500 milliseconds before processing the next frame
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        time.sleep(0.5)  # Sleep for 500 milliseconds
+
+    # Release video capture and close windows
+    cap.release()
+    cv2.destroyAllWindows()
+    print("Monitoring Finished......")
+
     # Print the final object counts
     print("Object Counts:")
     for cls, count in object_count.items():
@@ -138,7 +323,7 @@ def video_monitoring():
 
 
 
-
+boundarBox =[0, 200 ,300, 300]
 num_classes = 9
 model_learned_weights = "model.pth"
 model = ssd300_vgg16(weights=None, weights_backbone=None)

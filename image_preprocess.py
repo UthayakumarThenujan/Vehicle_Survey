@@ -10,20 +10,14 @@ classes = ["background", "Auto", "Bus", "Car", "LCV", "Motorcycle", "Truck", "Tr
 threshold = 0.5
 iou_threshold = 0.8
 
-# Function to preprocess the image
-def preprocess_image(image_path):
-    image = Image.open(image_path).convert("RGB")
-    transform = T.Compose([
-        T.Resize((300, 300)),
-        T.ToTensor()
-    ])
-    return transform(image).unsqueeze(0)
+boundarBox =[0, 200 ,300, 300]
 
-def show_bbox(img, target, axis, color=(0, 255, 0)):
+def show_bbox(img, target,ratio_heigth=1, ratio_width=1, color=(0, 255, 0)):
     img = np.transpose(img.cpu().numpy(), (1, 2, 0))
     boxes = target["boxes"].cpu().numpy().astype("int")
     labels = target["labels"].cpu().numpy()
     img = img.copy()
+    
     for i, box in enumerate(boxes):
         idx = int(labels[i])
         text = classes[idx]
@@ -32,10 +26,10 @@ def show_bbox(img, target, axis, color=(0, 255, 0)):
         y = box[1] - 10 if box[1] - 10 > 10 else box[1] + 10
         cv2.putText(img, text, (box[0], y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-    specific_box = [(50, 50), (250, 150)]
-    cv2.rectangle(img, specific_box[0], specific_box[1], color, 2)
-    axis.imshow(img)
-    axis.axis("off")
+    specific_box = [(int(boundarBox[0] * ratio_width), int(boundarBox[1] * ratio_heigth)), (int(boundarBox[2] * ratio_width), int(boundarBox[3] * ratio_heigth))]
+    cv2.rectangle(img, specific_box[0], specific_box[1], (0, 0, 255), 2)
+    return img
+
 
 def preprocess_bbox(prediction):
     processed_bbox = {}
@@ -59,3 +53,20 @@ def preprocess_frame(frame):
     ])
     return transform(image).unsqueeze(0)
 
+
+# Function to preprocess the image
+def preprocess_image(image_path):
+    image = Image.open(image_path).convert("RGB")
+    transform = T.Compose([
+        T.Resize((300, 300)),
+        T.ToTensor()
+    ])
+    return transform(image).unsqueeze(0)
+
+# Function to preprocess the image
+def preprocess_video(imagef):
+    image = Image.fromarray(np.uint8(imagef)).convert("RGB")
+    transform = T.Compose([
+        T.ToTensor()
+    ])
+    return transform(image).unsqueeze(0)
